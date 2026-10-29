@@ -1,0 +1,72 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    branches: [ master, feat/* ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java (JDK 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Run Static Analysis & Tests
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build Android Release APK
+        run: flutter build apk --release
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh-remote-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+      - name: Create or Update GitHub Release
+        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name == 'master' && 'v1.0.0-latest' || github.ref_name }}
+          name: "SSH Remote APK (${{ github.ref_name == 'master' && 'Latest Build' || github.ref_name }})"
+          body: |
+            ## 📱 SSH Remote Android APK
+            Aplikasi mobile remote control VPS & monitor sistem via SSH.
+            
+            ### Fitur:
+            - 🖥️ **Server Health Dashboard:** CPU, RAM, Disk, dan Uptime real-time
+            - ⚡ **Quick Actions:** Restart VPS (`sudo reboot`), restart services (Nginx, Docker)
+            - 💻 **Interactive Terminal:** Shell xterm dengan keyboard accessory bar
+            - 🎨 **Tema Biru-Putih & Dark Mode:** Material 3 elegan
+            
+            **Download APK di bawah:**
+          files: build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
