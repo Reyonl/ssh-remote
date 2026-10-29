@@ -22,6 +22,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   void initState() {
     super.initState();
+    // Pause background CPU/RAM metric polling to dedicate 100% SSH bandwidth to interactive shell
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ServerProvider>().pausePolling();
+      }
+    });
+
     _terminal = Terminal(maxLines: 5000);
     _initShell();
   }
@@ -43,7 +50,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       );
       _session = session;
 
-      // Pipe server output to terminal UI
+      // Pipe server output to terminal UI immediately
       session.stdout.listen(
         (data) => _terminal.write(utf8.decode(data, allowMalformed: true)),
         onError: (err) => _terminal.write('\r\n[Stream Error: $err]\r\n'),
@@ -52,7 +59,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         (data) => _terminal.write(utf8.decode(data, allowMalformed: true)),
       );
 
-      // Pipe terminal UI user input to server stdin
+      // Pipe terminal UI user input to server stdin with instant transmission
       _terminal.onOutput = (data) {
         session.stdin.add(utf8.encode(data));
       };
@@ -76,6 +83,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   @override
   void dispose() {
+    // Resume background monitoring when leaving terminal
+    try {
+      context.read<ServerProvider>().resumePolling();
+    } catch (_) {}
     _session?.close();
     super.dispose();
   }

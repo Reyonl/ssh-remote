@@ -1,7 +1,32 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 import '../models/server_profile.dart';
+
+class _FastSSHSocket implements SSHSocket {
+  final Socket _socket;
+  _FastSSHSocket(this._socket);
+
+  @override
+  Stream<Uint8List> get stream => _socket;
+
+  @override
+  StreamSink<List<int>> get sink => _socket;
+
+  @override
+  Future<void> close() => _socket.close();
+
+  @override
+  Future<void> get done => _socket.done;
+
+  @override
+  void destroy() => _socket.destroy();
+
+  @override
+  Future<void> flush() => _socket.flush();
+}
 
 class SshService {
   SSHClient? _client;
@@ -14,11 +39,14 @@ class SshService {
     disconnect();
     _currentProfile = profile;
 
-    final socket = await SSHSocket.connect(
+    // Use low-latency socket with Nagle's algorithm disabled (tcpNoDelay)
+    final rawSocket = await Socket.connect(
       profile.host,
       profile.port,
       timeout: const Duration(seconds: 10),
     );
+    rawSocket.setOption(SocketOption.tcpNoDelay, true);
+    final socket = _FastSSHSocket(rawSocket);
 
     // Support both password & private key authentication
     List<SSHKeyPair>? identities;
@@ -162,7 +190,6 @@ grep PRETTY_NAME /etc/os-release 2>/dev/null
       }
     }
 
-    // Calculate approximate CPU usage from 1m load avg & core count
     final calculatedCpu = ((cpuPct / cores) * 100).clamp(0.0, 100.0);
 
     return ServerStats(
@@ -183,12 +210,10 @@ grep PRETTY_NAME /etc/os-release 2>/dev/null
       throw Exception('SSH Client tidak terhubung.');
     }
     try {
-      // Execute reboot with a short timeout as connection drops instantly on reboot
       await _client!
           .execute('sudo reboot || reboot')
           .timeout(const Duration(seconds: 3));
     } catch (_) {
-      // Disconnection is normal and expected when machine begins reboot sequence
     } finally {
       disconnect();
     }

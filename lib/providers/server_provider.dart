@@ -128,7 +128,7 @@ class ServerProvider extends ChangeNotifier {
       // Immediately fetch initial stats
       await refreshStats();
 
-      // Start automatic polling every 6 seconds
+      // Start automatic polling every 10 seconds
       _startPolling();
     } catch (e) {
       _status = ConnectionStatus.error;
@@ -139,11 +139,22 @@ class ServerProvider extends ChangeNotifier {
 
   void _startPolling() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 6), (_) async {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       if (_status == ConnectionStatus.connected && _sshService.isConnected) {
         await refreshStats(silent: true);
       }
     });
+  }
+
+  void pausePolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+  }
+
+  void resumePolling() {
+    if (_status == ConnectionStatus.connected && _sshService.isConnected && _pollingTimer == null) {
+      _startPolling();
+    }
   }
 
   Future<void> refreshStats({bool silent = false}) async {
